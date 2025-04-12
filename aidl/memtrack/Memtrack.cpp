@@ -84,23 +84,34 @@ bool parseDmaHeap(int pid, int64_t* size) {
     });
 }
 
-bool parseGpuMemory(const char* path, int pid, int64_t* size) {
-    FILE* fp;
-    if (!openFile(path, "r", &fp)) return false;
+bool parseGpuMemory(int pid, int64_t* size) {
+    FILE* fp = fopen("/proc/mtk_mali/gpu_memory", "r");
+    if (!fp) {
+        fp = fopen("/proc/mali/memory_usage", "r");
+        if (!fp) {
+            ALOGE("Failed to open any GPU memory usage file");
+            return false;
+        }
+    }
 
-    *size = 0;
-    return readFileLines(fp, [pid, size](const char* line) {
+    char line[256];
+    int64_t total_gpu_mem = 0;
+    while (fgets(line, sizeof(line), fp)) {
         int line_pid;
         int64_t gpu_mem;
-
         if (sscanf(line, "  %*s %ld %u", &gpu_mem, &line_pid) == 2) {
-            if (line_pid == pid || pid == 0) {
-                *size += gpu_mem * PAGE_SIZE;
-                return pid == 0;
+            if (line_pid == pid) {
+                total_gpu_mem += gpu_mem;
             }
         }
+    }
+    fclose(fp);
+
+    if (total_gpu_mem > 0) {
+        *size += total_gpu_mem * getpagesize();
         return true;
-    });
+    }
+    return false;
 }
 
 }  // namespace
